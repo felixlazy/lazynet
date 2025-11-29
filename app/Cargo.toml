@@ -1,0 +1,12 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+color-eyre.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-error = "0.2.1"
+tracing-appender = "0.2.1"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
