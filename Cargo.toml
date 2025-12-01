@@ -1,5 +1,5 @@
 [workspace]
-members = ["app"]
+members = ["app", "net"]
 
 [workspace.dependencies]
 color-eyre = "0.6.5"
