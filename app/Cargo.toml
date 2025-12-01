@@ -10,3 +10,5 @@ tracing.workspace = true
 tracing-error = "0.2.1"
 tracing-appender = "0.2.1"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+net = { path = "../net/" }
+bytes = "1.11.0"

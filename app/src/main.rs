@@ -1,3 +1,4 @@
+use app::app::LazyApp;
 use color_eyre::Result;
 use tracing_appender::{non_blocking, rolling};
 use tracing_error::ErrorLayer;
@@ -31,11 +32,14 @@ async fn main() -> Result<()> {
 
     // 初始化 tracing 订阅器
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("DEBUG")))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("INFO")))
         .with(ErrorLayer::default())
         .with(file_layer)
         .with(console_layer)
         .init();
 
+    let mut app = LazyApp::connect("192.168.1.103:5006").await?;
+    app.start();
+    app.run().await?;
     Ok(())
 }
