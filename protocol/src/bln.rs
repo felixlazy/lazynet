@@ -18,12 +18,15 @@ use crate::{
 pub enum BlnProtocolType {
     /// 设置位置请求
     SetPositionRsq(f32, f32),
-    /// 设置位置响应
+    /// 设置位置响应 (第一阶段：通信确认)
     SetPositionRsp,
+    /// 位置到达响应 (第二阶段：执行完成)
+    PositionReached(f32, f32),
     /// 获取位置请求
     GetPositionRsq,
     /// 获取位置响应
     GetPositionRsp(f32, f32, u8),
+    ErrorRsp(BlnErrorCause),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -54,6 +57,51 @@ impl From<BlnResponseStatus> for u8 {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(u8)]
+pub enum BlnErrorCause {
+    /// 表示操作成功完成，没有错误。
+    Success = 0x00,
+    /// 帧数据校验和不匹配。
+    ChecksumError = 0x01,
+    /// 接收到的参数不合法或超出范围。
+    InvalidArgument = 0x02,
+    /// 执行操作失败。
+    OperationFailed = 0x03,
+    /// 指定的配置项不存在。
+    ConfigNotFound = 0x04,
+    /// 设备内部发生未知错误。
+    InternalError = 0x05,
+    /// 设备当前状态不允许执行该操作。
+    StateMismatch = 0x06,
+    /// 没有可用的有效数据。
+    NoValidData = 0x07,
+    /// 未知的或未指定的错误。
+    UnspecifiedError = 0xFF,
+}
+
+impl From<u8> for BlnErrorCause {
+    fn from(value: u8) -> Self {
+        match value {
+            0x00 => Self::Success,
+            0x01 => Self::ChecksumError,
+            0x02 => Self::InvalidArgument,
+            0x03 => Self::OperationFailed,
+            0x04 => Self::ConfigNotFound,
+            0x05 => Self::InternalError,
+            0x06 => Self::StateMismatch,
+            0x07 => Self::NoValidData,
+            0xFF => Self::UnspecifiedError,
+            _ => Self::UnspecifiedError,
+        }
+    }
+}
+
+impl From<BlnErrorCause> for u8 {
+    fn from(value: BlnErrorCause) -> Self {
+        value as u8
+    }
+}
 // 将通用的 `Command` 解析为具体的 `BlnProtocolType`.
 impl TryFrom<Command> for BlnProtocolType {
     type Error = ProtocolError;
@@ -64,21 +112,61 @@ impl TryFrom<Command> for BlnProtocolType {
             .first()
             .ok_or(ProtocolError::InvalidCommandType)?;
 
+        let status: BlnResponseStatus = value
+            .response_status
+            .ok_or(ProtocolError::InvalidPayload)? // 如果不存在则视为无效
+            .into();
+
+        // 1. 首先，统一处理所有命令的“错误”状态
+        if status == BlnResponseStatus::Error {
+            // 如果是错误响应, 则 payload 应该包含 1 字节的错误原因
+            let mut payload = value.payload.ok_or(ProtocolError::InvalidPayload)?;
+            if payload.len() != 1 {
+                return Err(ProtocolError::InvalidPayload);
+            }
+            return Ok(Self::ErrorRsp(payload.get_u8().into()));
+        }
+
+        // 2. 如果不是错误状态，再根据命令字处理各自的“成功”状态
         match cmd_byte {
             0x91 => {
-                if value.payload.is_some() {
-                    return Err(ProtocolError::InvalidPayload);
+                match status {
+                    BlnResponseStatus::Ok => {
+                        // 阶段1: 通信确认。payload 必须为空。
+                        if value.payload.is_some() {
+                            return Err(ProtocolError::InvalidPayload);
+                        }
+                        Ok(Self::SetPositionRsp)
+                    }
+                    BlnResponseStatus::OkWithData => {
+                        // 阶段2: 执行完成确认。payload 必须为 8 字节 (f32 + f32)。
+                        let mut payload = value.payload.ok_or(ProtocolError::InvalidPayload)?;
+                        if payload.len() != 8 {
+                            return Err(ProtocolError::InvalidPayload);
+                        }
+
+                        Ok(Self::PositionReached(
+                            payload.get_f32_le(),
+                            payload.get_f32_le(),
+                        ))
+                    }
+                    // 对于 0x91 命令，不应该出现 Error 之外的其他状态
+                    _ => Err(ProtocolError::InvalidPayload),
                 }
-                Ok(Self::SetPositionRsp)
             }
             0x93 => {
+                // 校验：成功有数据的响应，其 status 必须是 OkWithData
+                if status != BlnResponseStatus::OkWithData {
+                    return Err(ProtocolError::InvalidPayload); // 状态与命令不符
+                }
+                // 校验：payload 必须为 9 字节
                 let mut payload = value.payload.ok_or(ProtocolError::InvalidPayload)?;
                 if payload.len() != 9 {
                     return Err(ProtocolError::InvalidPayload);
                 }
                 Ok(Self::GetPositionRsp(
-                    payload.get_f32_ne(),
-                    payload.get_f32_ne(),
+                    payload.get_f32_le(),
+                    payload.get_f32_le(),
                     payload.get_u8(),
                 ))
             }
