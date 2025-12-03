@@ -232,51 +232,52 @@ impl ParseProtocol for BlnProtocol {
     /// 如果成功解析并提取到至少一个有效帧,返回包含 `Command` 对象的 `Option<Vec<Command>>`;
     /// 否则返回 `None`,表示缓冲区中没有足够的完整且有效的帧数据可供解析.
     fn parse_protocol_frame(&mut self, buf: &mut bytes::BytesMut) -> Option<Vec<Command>> {
-        // 1. 尝试找到一个有效的帧头, 并确保缓冲区中有足够的数据来读取长度字段
-        if self.find_frame_head(buf)
-            && let Some(frame_len) = self.is_frame_complete(buf)
-        {
-            // 2. 初始化一个列表用于存放解析出的 Command
-            let mut command_list = vec![];
-
-            // 3. 检查当前帧的 BCC 校验码
-            if calculate_bcc(&buf[Self::FRAME_HEAD_LEN..frame_len - Self::FRAME_BCC_LEN])
-                == buf[frame_len - Self::FRAME_BCC_LEN]
+        let mut command_list = vec![];
+        loop {
+            if self.find_frame_head(buf)
+                && let Some(frame_len) = self.is_frame_complete(buf)
             {
-                // 3.1 BCC 校验成功, 解析当前帧为 Command 对象
-                let mut cmd = Command {
-                    cmd_type: BytesMut::with_capacity(Self::TYPE_LEN), // 命令类型字段
-                    ..Default::default()
-                };
-                let mut frame_data = buf.split_to(frame_len); // 分割出当前帧的数据
+                // 2. 初始化一个列表用于存放解析出的 Command
 
-                frame_data.advance(Self::FRAME_HEAD_LEN); // 跳过帧头 (0x55AA)
-                cmd.cmd_type.put_u8(frame_data.get_u8()); // 读取命令字
-                frame_data.advance(Self::RESERVED_LEN); // 跳过保留字段 (4字节)
-                // 从帧数据中读取 2 字节的长度/标志字段 (小端序), 并解码出数据长度和状态标志
-                let (data_len, flags) = self.decode_length_flags(frame_data.get_u16_le());
-                cmd.response_status = Some(flags); // 将解析出的状态标志赋给 Command
+                // 3. 检查当前帧的 BCC 校验码
+                if calculate_bcc(&buf[Self::FRAME_HEAD_LEN..frame_len - Self::FRAME_BCC_LEN])
+                    == buf[frame_len - Self::FRAME_BCC_LEN]
+                {
+                    // 3.1 BCC 校验成功, 解析当前帧为 Command 对象
+                    let mut cmd = Command {
+                        cmd_type: BytesMut::with_capacity(Self::TYPE_LEN), // 命令类型字段
+                        ..Default::default()
+                    };
+                    let mut frame_data = buf.split_to(frame_len); // 分割出当前帧的数据
 
-                if data_len != 0 {
-                    cmd.payload = Some(frame_data.split_to(data_len)) // 读取负载数据
+                    frame_data.advance(Self::FRAME_HEAD_LEN); // 跳过帧头 (0x55AA)
+                    cmd.cmd_type.put_u8(frame_data.get_u8()); // 读取命令字
+                    frame_data.advance(Self::RESERVED_LEN); // 跳过保留字段 (4字节)
+                    // 从帧数据中读取 2 字节的长度/标志字段 (小端序), 并解码出数据长度和状态标志
+                    let (data_len, flags) = self.decode_length_flags(frame_data.get_u16_le());
+                    cmd.response_status = Some(flags); // 将解析出的状态标志赋给 Command
+
+                    if data_len != 0 {
+                        cmd.payload = Some(frame_data.split_to(data_len)) // 读取负载数据
+                    }
+
+                    command_list.push(cmd); // 将解析出的当前 Command 添加到列表
+                } else {
+                    // 3.3 BCC 校验失败, 丢弃当前帧并继续解析
+                    info!("BCC check failed for a frame, discarding it.");
+                    buf.advance(frame_len); // 丢弃整个损坏的帧
                 }
-
-                command_list.push(cmd); // 将解析出的当前 Command 添加到列表
-
-                // 3.2 递归解析缓冲区的剩余部分
-                if let Some(remaining_commands) = self.parse_protocol_frame(buf) {
-                    command_list.extend(remaining_commands);
-                }
-                return Some(command_list); // 返回当前所有解析出的命令
             } else {
-                // 3.3 BCC 校验失败, 丢弃当前帧并继续解析
-                info!("BCC check failed for a frame, discarding it.");
-                buf.advance(frame_len); // 丢弃整个损坏的帧
-                // 递归调用自身, 继续尝试解析缓冲区中剩余的数据
-                return self.parse_protocol_frame(buf);
+                break;
             }
         }
-        None
+
+        if command_list.is_empty() {
+            None
+        } else {
+            Some(command_list)
+        }
+        // 1. 尝试找到一个有效的帧头, 并确保缓冲区中有足够的数据来读取长度字段
     }
 }
 
