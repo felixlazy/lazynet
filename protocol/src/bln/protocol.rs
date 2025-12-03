@@ -4,7 +4,7 @@ use crate::{
     utils::calculate_bcc,
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use tracing::info;
+use tracing::{debug, info, instrument};
 
 /// `BlnProtocol` 结构体是 Bln 协议的实现,用于处理帧的解析.
 pub struct BlnProtocol {}
@@ -48,7 +48,7 @@ impl BlnProtocol {
         }
 
         let len_bytes: [u8; 2] = buf[7..9].try_into().unwrap();
-        let len_field = u16::from_le_bytes(len_bytes);
+        let len_field = u16::from_be_bytes(len_bytes);
 
         let (data_len, _) = self.decode_length_flags(len_field);
         let frame_len = data_len + min_len;
@@ -69,6 +69,7 @@ impl BlnProtocol {
 }
 
 impl ParseProtocol for BlnProtocol {
+    #[instrument(skip(self, buf))]
     fn parse_protocol_frame(&mut self, buf: &mut bytes::BytesMut) -> Option<Vec<Command>> {
         let mut command_list = vec![];
         loop {
@@ -79,11 +80,10 @@ impl ParseProtocol for BlnProtocol {
                     == buf[frame_len - Self::FRAME_BCC_LEN]
                 {
                     let mut frame_data = buf.split_to(frame_len);
-
                     frame_data.advance(Self::FRAME_HEAD_LEN);
                     let cmd_type_byte = frame_data.get_u8();
                     frame_data.advance(Self::RESERVED_LEN);
-                    let (data_len, flags) = self.decode_length_flags(frame_data.get_u16_le());
+                    let (data_len, flags) = self.decode_length_flags(frame_data.get_u16());
 
                     let payload = if data_len > 0 {
                         Some(frame_data.split_to(data_len))
@@ -99,6 +99,7 @@ impl ParseProtocol for BlnProtocol {
                         response_status: Some(flags),
                         payload,
                     };
+                    debug!(%cmd);
                     command_list.push(cmd);
                 } else {
                     info!("BCC check failed for a frame, discarding it.");
@@ -138,7 +139,7 @@ impl FrameGenerator for BlnProtocol {
         buf.put_slice(&Self::FRAME_HEAD);
         buf.put_u8(cmd_byte);
         buf.put_slice(&[0x00, 0x00, 0x00, 0x00]); // 保留字段
-        buf.put_u16_le(data_len as u16);
+        buf.put_u16(data_len as u16);
         if !data.is_empty() {
             buf.put_slice(&data);
         }

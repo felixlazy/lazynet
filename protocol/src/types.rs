@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use bytes::BytesMut;
 use thiserror::Error;
 
@@ -10,6 +12,25 @@ pub struct Command {
     pub response_status: Option<u8>,
     /// 命令的可选负载数据.
     pub payload: Option<BytesMut>,
+}
+impl Display for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(ref payload) = self.payload {
+            write!(
+                f,
+                "Command {{ cmd_type: {:02X}, response_status: {:?}, payload: {:02X?} }}",
+                self.cmd_type,
+                self.response_status,
+                payload.as_ref(),
+            )
+        } else {
+            write!(
+                f,
+                "Command {{ cmd_type: {:02X}, response_status: {:?}, payload: {:?} }}",
+                self.cmd_type, self.response_status, self.payload
+            )
+        }
+    }
 }
 
 /// 定义了在协议处理过程中可能发生的通用错误.
