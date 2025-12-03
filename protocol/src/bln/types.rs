@@ -118,3 +118,55 @@ impl From<BlnErrorCause> for u8 {
         value as u8
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bln_response_status_from_u8() {
+        assert_eq!(BlnResponseStatus::from(0x00), BlnResponseStatus::Unused);
+        assert_eq!(BlnResponseStatus::from(0x01), BlnResponseStatus::Ok);
+        assert_eq!(BlnResponseStatus::from(0x02), BlnResponseStatus::OkWithData);
+        assert_eq!(BlnResponseStatus::from(0x03), BlnResponseStatus::Error);
+        assert_eq!(BlnResponseStatus::from(0x04), BlnResponseStatus::Reserved);
+        assert_eq!(BlnResponseStatus::from(0x05), BlnResponseStatus::Reserved); // Unknown value
+        assert_eq!(BlnResponseStatus::from(0xFF), BlnResponseStatus::Reserved); // Unknown value
+    }
+
+    #[test]
+    fn test_bln_response_status_into_u8() {
+        assert_eq!(u8::from(BlnResponseStatus::Unused), 0x00);
+        assert_eq!(u8::from(BlnResponseStatus::Ok), 0x01);
+        assert_eq!(u8::from(BlnResponseStatus::OkWithData), 0x02);
+        assert_eq!(u8::from(BlnResponseStatus::Error), 0x03);
+        assert_eq!(u8::from(BlnResponseStatus::Reserved), 0x04);
+    }
+
+    #[test]
+    fn test_bln_error_cause_from_u8() {
+        assert_eq!(BlnErrorCause::from(0x00), BlnErrorCause::Success);
+        assert_eq!(BlnErrorCause::from(0x01), BlnErrorCause::ChecksumError);
+        assert_eq!(BlnErrorCause::from(0x02), BlnErrorCause::InvalidArgument);
+        assert_eq!(BlnErrorCause::from(0x03), BlnErrorCause::OperationFailed);
+        assert_eq!(BlnErrorCause::from(0x04), BlnErrorCause::ConfigNotFound);
+        assert_eq!(BlnErrorCause::from(0x05), BlnErrorCause::InternalError);
+        assert_eq!(BlnErrorCause::from(0x06), BlnErrorCause::StateMismatch);
+        assert_eq!(BlnErrorCause::from(0x07), BlnErrorCause::NoValidData);
+        assert_eq!(BlnErrorCause::from(0xFF), BlnErrorCause::UnspecifiedError);
+        assert_eq!(BlnErrorCause::from(0x08), BlnErrorCause::UnspecifiedError); // Unknown value
+    }
+
+    #[test]
+    fn test_bln_error_cause_into_u8() {
+        assert_eq!(u8::from(BlnErrorCause::Success), 0x00);
+        assert_eq!(u8::from(BlnErrorCause::ChecksumError), 0x01);
+        assert_eq!(u8::from(BlnErrorCause::InvalidArgument), 0x02);
+        assert_eq!(u8::from(BlnErrorCause::OperationFailed), 0x03);
+        assert_eq!(u8::from(BlnErrorCause::ConfigNotFound), 0x04);
+        assert_eq!(u8::from(BlnErrorCause::InternalError), 0x05);
+        assert_eq!(u8::from(BlnErrorCause::StateMismatch), 0x06);
+        assert_eq!(u8::from(BlnErrorCause::NoValidData), 0x07);
+        assert_eq!(u8::from(BlnErrorCause::UnspecifiedError), 0xFF);
+    }
+}

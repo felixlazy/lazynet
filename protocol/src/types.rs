@@ -2,7 +2,7 @@ use bytes::BytesMut;
 use thiserror::Error;
 
 /// 一个通用的命令结构体,作为协议特定类型 (如 `BlnProtocolType`) 和通用帧生成/解析逻辑之间的中间层.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq)]
 pub struct Command {
     /// 命令类型/ID, 通常是一个或多个字节.
     pub cmd_type: BytesMut,

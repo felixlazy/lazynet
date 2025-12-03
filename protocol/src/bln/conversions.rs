@@ -1,4 +1,4 @@
-use super::types::{BlnProtocolType, BlnResponseStatus};
+use super::types::{BlnErrorCause, BlnProtocolType, BlnResponseStatus};
 use crate::types::{Command, ProtocolError};
 use bytes::{Buf, BufMut, BytesMut};
 use std::convert::TryFrom;
@@ -15,7 +15,7 @@ impl TryFrom<Command> for BlnProtocolType {
 
         let status: BlnResponseStatus = value
             .response_status
-            .ok_or(ProtocolError::InvalidPayload)?
+            .ok_or(ProtocolError::InvalidPayload)? // 如果不存在则视为无效
             .into();
 
         // 1. 首先，统一处理所有命令的“错误”状态
@@ -100,8 +100,218 @@ impl TryFrom<BlnProtocolType> for Command {
                     payload: None,
                 })
             }
-            // ErrorRsp, SetPositionRsp 等响应类型不应由从机主动创建, 因此不实现转换
+            // ErrorRsp, SetPositionRsp, PositionReached 等响应类型不应由从机主动创建, 因此不实现转换为 Command
             _ => Err(ProtocolError::InvalidCommandType),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bln::types::{BlnErrorCause, BlnProtocolType, BlnResponseStatus};
+    use crate::types::{Command, ProtocolError};
+    use bytes::{BufMut, BytesMut};
+
+    // Helper to create a BytesMut from a slice
+    fn b(s: &[u8]) -> BytesMut {
+        let mut buf = BytesMut::new();
+        buf.put_slice(s);
+        buf
+    }
+
+    // --- Tests for TryFrom<Command> for BlnProtocolType ---
+
+    #[test]
+    fn test_parse_error_rsp_success() {
+        let mut payload = BytesMut::new();
+        payload.put_u8(0x01); // ChecksumError
+        let command = Command {
+            cmd_type: b(&[0x00]), // Dummy command type, doesn't matter for error
+            response_status: Some(BlnResponseStatus::Error.into()),
+            payload: Some(payload),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(
+            result,
+            Ok(BlnProtocolType::ErrorRsp(BlnErrorCause::ChecksumError))
+        );
+    }
+
+    #[test]
+    fn test_parse_error_rsp_invalid_payload_len() {
+        let mut payload = BytesMut::new();
+        payload.put_slice(&[0x01, 0x02]); // Too long
+        let command = Command {
+            cmd_type: b(&[0x00]),
+            response_status: Some(BlnResponseStatus::Error.into()),
+            payload: Some(payload),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidPayload));
+    }
+
+    #[test]
+    fn test_parse_error_rsp_no_payload() {
+        let command = Command {
+            cmd_type: b(&[0x00]),
+            response_status: Some(BlnResponseStatus::Error.into()),
+            payload: None,
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidPayload));
+    }
+
+    #[test]
+    fn test_parse_set_position_rsp_ok() {
+        let command = Command {
+            cmd_type: b(&[0x91]),
+            response_status: Some(BlnResponseStatus::Ok.into()),
+            payload: None,
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Ok(BlnProtocolType::SetPositionRsp));
+    }
+
+    #[test]
+    fn test_parse_set_position_rsp_ok_with_data_invalid_status() {
+        let command = Command {
+            cmd_type: b(&[0x91]),
+            response_status: Some(BlnResponseStatus::Ok.into()), // Should be OkWithData
+            payload: Some(b(&[0; 8])),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidPayload)); // Status mismatch
+    }
+
+    #[test]
+    fn test_parse_set_position_rsp_ok_with_data_success() {
+        let mut payload = BytesMut::new();
+        payload.put_f32_le(10.5);
+        payload.put_f32_le(20.5);
+        let command = Command {
+            cmd_type: b(&[0x91]),
+            response_status: Some(BlnResponseStatus::OkWithData.into()),
+            payload: Some(payload),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Ok(BlnProtocolType::PositionReached(10.5, 20.5)));
+    }
+
+    #[test]
+    fn test_parse_set_position_rsp_ok_with_data_invalid_payload_len() {
+        let command = Command {
+            cmd_type: b(&[0x91]),
+            response_status: Some(BlnResponseStatus::OkWithData.into()),
+            payload: Some(b(&[0; 7])), // Wrong length
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidPayload));
+    }
+
+    #[test]
+    fn test_parse_get_position_rsp_success() {
+        let mut payload = BytesMut::new();
+        payload.put_f32_le(10.0);
+        payload.put_f32_le(20.0);
+        payload.put_u8(5); // Dummy u8
+        let command = Command {
+            cmd_type: b(&[0x93]),
+            response_status: Some(BlnResponseStatus::OkWithData.into()),
+            payload: Some(payload),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Ok(BlnProtocolType::GetPositionRsp(10.0, 20.0, 5)));
+    }
+
+    #[test]
+    fn test_parse_get_position_rsp_invalid_status() {
+        let command = Command {
+            cmd_type: b(&[0x93]),
+            response_status: Some(BlnResponseStatus::Ok.into()), // Should be OkWithData
+            payload: Some(b(&[0; 9])),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidPayload)); // Status mismatch
+    }
+
+    #[test]
+    fn test_parse_get_position_rsp_invalid_payload_len() {
+        let mut payload = BytesMut::new();
+        payload.put_f32_le(10.0);
+        payload.put_f32_le(20.0);
+        // Missing last u8
+        let command = Command {
+            cmd_type: b(&[0x93]),
+            response_status: Some(BlnResponseStatus::OkWithData.into()),
+            payload: Some(payload),
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidPayload));
+    }
+
+    #[test]
+    fn test_parse_invalid_cmd_type() {
+        let command = Command {
+            cmd_type: b(&[0xAA]), // Unknown command
+            response_status: Some(BlnResponseStatus::Ok.into()),
+            payload: None,
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidCommandType));
+    }
+
+    #[test]
+    fn test_parse_empty_cmd_type() {
+        let command = Command {
+            cmd_type: BytesMut::new(), // Empty command type
+            response_status: Some(BlnResponseStatus::Ok.into()),
+            payload: None,
+        };
+        let result: Result<BlnProtocolType, ProtocolError> = command.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidCommandType));
+    }
+
+    // --- Tests for TryFrom<BlnProtocolType> for Command ---
+
+    #[test]
+    fn test_create_set_position_rsq() {
+        let bln_cmd = BlnProtocolType::SetPositionRsq(10.0, 20.0);
+        let result: Result<Command, ProtocolError> = bln_cmd.try_into();
+        assert!(result.is_ok());
+        let command = result.unwrap();
+
+        assert_eq!(command.cmd_type.as_ref(), &[0x31]);
+        assert_eq!(command.response_status, None);
+
+        let mut expected_payload = BytesMut::new();
+        expected_payload.put_f32_le(10.0);
+        expected_payload.put_f32_le(20.0);
+        assert_eq!(command.payload.unwrap().as_ref(), expected_payload.as_ref());
+    }
+
+    #[test]
+    fn test_create_get_position_rsq() {
+        let bln_cmd = BlnProtocolType::GetPositionRsq;
+        let result: Result<Command, ProtocolError> = bln_cmd.try_into();
+        assert!(result.is_ok());
+        let command = result.unwrap();
+
+        assert_eq!(command.cmd_type.as_ref(), &[0x33]);
+        assert_eq!(command.response_status, None);
+        assert_eq!(command.payload, None);
+    }
+
+    #[test]
+    fn test_create_unsupported_bln_type() {
+        let bln_cmd = BlnProtocolType::SetPositionRsp; // Response type, cannot create
+        let result: Result<Command, ProtocolError> = bln_cmd.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidCommandType));
+    }
+
+    #[test]
+    fn test_create_error_rsp_bln_type() {
+        let bln_cmd = BlnProtocolType::ErrorRsp(BlnErrorCause::ChecksumError); // Response type, cannot create
+        let result: Result<Command, ProtocolError> = bln_cmd.try_into();
+        assert_eq!(result, Err(ProtocolError::InvalidCommandType));
     }
 }
