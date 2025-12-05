@@ -1,5 +1,6 @@
 use app::app::LazyApp;
 use color_eyre::Result;
+use protocol::{bln::BlnProtocol, traits::Protocol};
 use tracing_appender::{non_blocking, rolling};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
@@ -38,7 +39,10 @@ async fn main() -> Result<()> {
         .with(console_layer)
         .init();
 
-    let mut app = LazyApp::connect("192.168.1.103:5006").await?;
+    let mut protocol: Box<dyn Protocol> = Box::new(BlnProtocol::default());
+
+    let mut app = LazyApp::connect("192.168.1.103:5006", &mut protocol).await?;
+
     app.start();
     app.run().await?;
     Ok(())

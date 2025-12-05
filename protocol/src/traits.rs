@@ -28,18 +28,34 @@ pub trait ParseProtocol {
 /// 这个 trait 被设计为协议无关的, 只要给定的协议类型可以被转换成通用的 `Command` 结构体,
 /// 就可以使用它来创建帧, 从而实现代码复用和良好的扩展性.
 pub trait FrameGenerator {
-    /// 根据给定的协议特定命令, 创建一个完整的、可供发送的字节帧.
-    ///
-    /// # 泛型与 Trait Bound
-    /// * `T`: 一个泛型参数, 代表任何协议特定的命令类型 (例如 `BlnProtocolType`).
-    /// * `T: TryInto<Command>`: `T` 必须能够尝试转换为通用的 `Command` 结构体. 这是实现协议无关性的关键.
-    /// * `ProtocolError: From<T::Error>`: `T` 在转换过程中产生的任何错误 (`T::Error`), 都必须能够被转换成
-    ///   通用的 `ProtocolError`. 这是为了让 `?` 操作符能统一处理不同协议的错误.
+    /// 根据给定的通用 `Command`, 创建一个完整的、可供发送的字节帧.
     ///
     /// # 返回
     /// 一个 `Result`, 成功时包含一个包含完整协议帧的 `Bytes`, 失败时包含一个 `ProtocolError`.
-    fn create_frame<T>(&self, protocol_type: T) -> Result<Bytes, ProtocolError>
-    where
-        T: TryInto<Command>,
-        ProtocolError: From<T::Error>;
+    fn create_frame(&self, command: Command) -> Result<Bytes, ProtocolError>;
 }
+
+/// `Protocol` 是一个组合 trait, 结合了 `ParseProtocol` 和 `FrameGenerator` 的功能,
+/// 同时要求实现 `Send` trait, 以便协议处理器可以在线程之间安全地转移.
+/// 这使得 `Protocol` 实例可以在异步任务或多线程环境中作为 trait object (`dyn Protocol`) 使用.
+pub trait Protocol: ParseProtocol + FrameGenerator + Send {}
+
+/// 为所有同时实现了 `ParseProtocol`, `FrameGenerator` 和 `Send` 的类型 `U` 自动实现 `Protocol` trait.
+impl<U> Protocol for U where U: ParseProtocol + FrameGenerator + Send {}
+
+impl FrameGenerator for Box<dyn Protocol> {
+    /// 允许 `Box<dyn Protocol>` (即 trait object) 调用 `create_frame` 方法.
+    /// 这使得在运行时可以处理不同但实现了 `Protocol` trait 的具体类型.
+    fn create_frame(&self, command: Command) -> Result<Bytes, ProtocolError> {
+        self.as_ref().create_frame(command)
+    }
+}
+
+impl ParseProtocol for Box<dyn Protocol> {
+    /// 允许 `Box<dyn Protocol>` (即 trait object) 调用 `parse_protocol_frame` 方法.
+    /// 通过 `as_mut()` 获取可变引用, 以便能够修改 trait object 内部的状态.
+    fn parse_protocol_frame(&mut self, buf: &mut BytesMut) -> Option<Vec<Command>> {
+        self.as_mut().parse_protocol_frame(buf)
+    }
+}
+

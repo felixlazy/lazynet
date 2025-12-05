@@ -7,6 +7,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tracing::{debug, info, instrument};
 
 /// `BlnProtocol` 结构体是 Bln 协议的实现,用于处理帧的解析.
+#[derive(Default)]
 pub struct BlnProtocol {}
 
 impl BlnProtocol {
@@ -119,12 +120,7 @@ impl ParseProtocol for BlnProtocol {
 }
 
 impl FrameGenerator for BlnProtocol {
-    fn create_frame<T>(&self, protocol_type: T) -> Result<Bytes, ProtocolError>
-    where
-        T: TryInto<Command>,
-        ProtocolError: From<T::Error>,
-    {
-        let command = protocol_type.try_into()?;
+    fn create_frame(&self, command: Command) -> Result<Bytes, ProtocolError> {
         if command.cmd_type.len() != 1 {
             return Err(ProtocolError::InvalidCommandType);
         }

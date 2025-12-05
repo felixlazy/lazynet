@@ -1,4 +1,4 @@
-use super::types::{BlnErrorCause, BlnProtocolType, BlnResponseStatus};
+use super::types::{BlnProtocolType, BlnResponseStatus};
 use crate::types::{Command, ProtocolError};
 use bytes::{Buf, BufMut, BytesMut};
 use std::convert::TryFrom;

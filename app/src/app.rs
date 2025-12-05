@@ -1,17 +1,25 @@
 use color_eyre::eyre::Result;
 use net::client::{Lazyclient, connect};
+use protocol::traits::{FrameGenerator, ParseProtocol};
 use tracing::instrument;
 
 /// LazyApp 是一个封装了 Lazyclient 的应用结构体.
 /// 它负责管理客户端连接的生命周期和数据收发循环.
-pub struct LazyApp {
+pub struct LazyApp<'a, P>
+where
+    P: ParseProtocol + FrameGenerator,
+{
     /// 内部的 Lazyclient 实例,用于处理网络通信.
     client: Lazyclient,
     /// 指示应用是否正在运行的标志.
     running: bool,
+    protocol: &'a mut P,
 }
 
-impl LazyApp {
+impl<'a, P> LazyApp<'a, P>
+where
+    P: ParseProtocol + FrameGenerator,
+{
     /// 尝试连接到指定的地址,并返回一个 LazyApp 实例.
     ///
     /// # 参数
@@ -20,12 +28,14 @@ impl LazyApp {
     /// # 返回
     /// 如果连接成功,返回 `Result<Self>`,其中包含一个 LazyApp 实例;
     /// 否则返回 `Err`,包含连接失败的错误信息.
-    #[instrument(skip(addr), err)]
-    pub async fn connect(addr: impl AsRef<str>) -> Result<Self> {
+    #[instrument(skip(addr, protocol), err)]
+    pub async fn connect(addr: impl AsRef<str>, protocol: &'a mut P) -> Result<Self> {
+        // protocol 参数需要可变引用, 以匹配 LazyApp 结构体中的字段类型
         let client = connect(addr, 1024).await?;
         Ok(Self {
             client,
             running: false,
+            protocol,
         })
     }
 
@@ -38,7 +48,10 @@ impl LazyApp {
     pub async fn run(&mut self) -> Result<()> {
         while self.running {
             tokio::select! {
-                ret=self.client.read_frame()=>{}
+                _ret=self.client.read_frame()=> {
+                    // 从客户端读取到数据后, 使用协议解析器尝试解析数据帧.
+                    self.protocol.parse_protocol_frame(self.client.get_bytes_mut());
+                }
             }
         }
         Ok(())
