@@ -1,11 +1,13 @@
 use bytes::BytesMut;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{eyre, Result};
+use std::time::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
-        TcpSocket,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpSocket,
     },
+    time,
 };
 use tracing::{info, instrument, trace};
 
@@ -24,7 +26,9 @@ impl Lazyclient {
     /// 返回读取到的字节数.
     pub async fn read_frame(&mut self) -> Result<usize> {
         let len = self.read_half.read_buf(&mut self.buf).await?;
-        trace!("接收到的帧{:X?}", &self.buf[..len]);
+        if len > 0 {
+            trace!("接收到的帧{:X?}", &self.buf[self.buf.len() - len..]);
+        }
         Ok(len)
     }
 
@@ -40,6 +44,21 @@ impl Lazyclient {
     /// 获取内部缓冲区的不可变引用.
     pub fn buf(&self) -> &[u8] {
         &self.buf
+    }
+
+    /// 获取最新读取的数据切片.
+    ///
+    /// # 参数
+    /// * `len`: 最新读取的数据长度.
+    ///
+    /// # 返回
+    /// 返回一个包含最新读取数据的 `&[u8]` 切片.
+    pub fn last_read_bytes(&self, len: usize) -> &[u8] {
+        let buflen = self.buf.len();
+        if len > buflen {
+            return &[];
+        }
+        &self.buf[buflen - len..]
     }
 
     /// 获取内部可变缓冲区 `BytesMut` 的可变引用.
@@ -60,15 +79,26 @@ impl Lazyclient {
 /// 使用 `instrument` 宏进行tracing,并捕获错误.
 /// `addr` 参数是要连接的地址, `buf_len` 是内部缓冲区的初始容量.
 #[instrument(skip(addr))]
-pub async fn connect(addr: impl AsRef<str>, buf_len: usize) -> Result<Lazyclient> {
+pub async fn connect(
+    addr: impl AsRef<str>,
+    buf_len: usize,
+    timeout: Duration,
+) -> Result<Lazyclient> {
     // 创建一个新的IPv4 TCP socket
     let socket = TcpSocket::new_v4()?;
     // 禁用Nagle算法,减少延迟
     socket.set_nodelay(true)?;
     // 允许地址重用
     socket.set_reuseaddr(true)?;
-    // 连接到指定的地址
-    let client = socket.connect(addr.as_ref().parse()?).await?;
+
+    let remote_addr = addr.as_ref().parse()?;
+
+    // 连接到指定的地址,带超时
+    let client = time::timeout(timeout, socket.connect(remote_addr))
+        .await
+        .map_err(|_| eyre!("连接 {} 超时", addr.as_ref()))?
+        .map_err(|e| eyre!("连接 {} 失败: {}", addr.as_ref(), e))?;
+
     // 将TCP流拆分为读写两部分
     let (read_half, write_half) = client.into_split();
     info!("tcp连接到{}", addr.as_ref());

@@ -134,7 +134,7 @@ impl FrameGenerator for BlnProtocol {
 
         buf.put_slice(&Self::FRAME_HEAD);
         buf.put_u8(cmd_byte);
-        buf.put_slice(&[0x00, 0x00, 0x00, 0x00]); // 保留字段
+        buf.put_slice(&[0x00; Self::RESERVED_LEN]); // 保留字段
         buf.put_u16(data_len as u16);
         if !data.is_empty() {
             buf.put_slice(&data);
