@@ -1,7 +1,8 @@
 [workspace]
-members = ["app", "net", "protocol"]
+members = ["app", "net", "protocol", "ui"]
 
 [workspace.dependencies]
 color-eyre = "0.6.5"
 tracing = "0.1.43"
 tokio = { version = "1.47.2", features = ["full"] }
+ratatui = { version = "0.29.0", features = ["all-widgets"] }
