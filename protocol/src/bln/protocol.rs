@@ -1,11 +1,16 @@
 use crate::{
-    traits::{FrameGenerator, ParseProtocol},
+    bln::BlnProtocolType,
+    traits::{FrameGenerator, ParseProtocol, Protocol},
     types::{Command, ProtocolError},
     utils::calculate_bcc,
 };
+use async_trait::async_trait;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use stream::traits::AsyncFrameWriter;
+use tokio::time::Duration;
 use tracing::{debug, info, instrument};
 
+use color_eyre::Result;
 /// `BlnProtocol` 结构体是 Bln 协议的实现,用于处理帧的解析.
 #[derive(Default)]
 pub struct BlnProtocol {}
@@ -143,5 +148,17 @@ impl FrameGenerator for BlnProtocol {
 
         info!("BLN Frame Created: {:02X?}", buf.as_ref());
         Ok(buf.freeze())
+    }
+}
+#[async_trait]
+impl Protocol for BlnProtocol {
+    async fn handle_periodic_send_action<W>(&self, send: &mut W) -> Result<usize>
+    where
+        W: AsyncFrameWriter + Send,
+    {
+        let get_pos = self.create_frame(BlnProtocolType::GetPositionRsq.try_into()?)?;
+        let len = send.write_frame(&get_pos).await?;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(len)
     }
 }

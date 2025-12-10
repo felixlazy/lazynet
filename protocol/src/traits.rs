@@ -1,4 +1,7 @@
+use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use color_eyre::Result;
+use stream::traits::AsyncFrameWriter;
 
 use crate::types::{Command, ProtocolError};
 
@@ -35,27 +38,26 @@ pub trait FrameGenerator {
     fn create_frame(&self, command: Command) -> Result<Bytes, ProtocolError>;
 }
 
+#[async_trait]
 /// `Protocol` 是一个组合 trait, 结合了 `ParseProtocol` 和 `FrameGenerator` 的功能,
-/// 同时要求实现 `Send` trait, 以便协议处理器可以在线程之间安全地转移.
-/// 这使得 `Protocol` 实例可以在异步任务或多线程环境中作为 trait object (`dyn Protocol`) 使用.
-pub trait Protocol: ParseProtocol + FrameGenerator + Send {}
-
-/// 为所有同时实现了 `ParseProtocol`, `FrameGenerator` 和 `Send` 的类型 `U` 自动实现 `Protocol` trait.
-impl<U> Protocol for U where U: ParseProtocol + FrameGenerator + Send {}
-
-impl FrameGenerator for Box<dyn Protocol> {
-    /// 允许 `Box<dyn Protocol>` (即 trait object) 调用 `create_frame` 方法.
-    /// 这使得在运行时可以处理不同但实现了 `Protocol` trait 的具体类型.
-    fn create_frame(&self, command: Command) -> Result<Bytes, ProtocolError> {
-        self.as_ref().create_frame(command)
+/// 并提供了处理周期性发送动作的能力. 它是应用层协议的核心接口.
+pub trait Protocol: ParseProtocol + FrameGenerator + Send {
+    /// 处理周期性发送动作的异步方法,例如发送心跳包或保持连接活跃的消息.
+    ///
+    /// 此方法提供一个默认实现, 不执行任何操作并返回 `Ok(0)`.
+    /// 具体的协议实现可以重写此方法, 以便在协议需要时发送周期性数据.
+    ///
+    /// # 参数
+    /// * `_send`: 一个实现了 `AsyncFrameWriter` trait 的可变引用, 用于向流中写入数据.
+    ///            在默认实现中未使用, 但在重写此方法的具体协议实现中可用于发送数据.
+    ///
+    /// # 返回
+    /// 一个 `Result<usize>`, 表示成功发送的字节数, 或者在发送过程中遇到的错误.
+    /// 默认实现总是返回 `Ok(0)`.
+    async fn handle_periodic_send_action<W>(&self, _send: &mut W) -> Result<usize>
+    where
+        W: AsyncFrameWriter + Send,
+    {
+        std::future::pending().await
     }
 }
-
-impl ParseProtocol for Box<dyn Protocol> {
-    /// 允许 `Box<dyn Protocol>` (即 trait object) 调用 `parse_protocol_frame` 方法.
-    /// 通过 `as_mut()` 获取可变引用, 以便能够修改 trait object 内部的状态.
-    fn parse_protocol_frame(&mut self, buf: &mut BytesMut) -> Option<Vec<Command>> {
-        self.as_mut().parse_protocol_frame(buf)
-    }
-}
-

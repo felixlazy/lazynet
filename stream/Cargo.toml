@@ -1,5 +1,5 @@
 [package]
-name = "net"
+name = "stream"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,3 +8,4 @@ tokio.workspace = true
 color-eyre.workspace = true
 tracing.workspace = true
 bytes = "1.11.0"
+async-trait = "0.1.89"
