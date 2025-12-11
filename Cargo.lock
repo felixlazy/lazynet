@@ -48,6 +48,7 @@ dependencies = [
  "tracing-appender",
  "tracing-error",
  "tracing-subscriber",
+ "ui",
 ]
 
 [[package]]

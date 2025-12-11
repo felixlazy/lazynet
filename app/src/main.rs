@@ -1,5 +1,5 @@
 use app::app::LazyApp;
-use bln::protocol::BlnProtocol;
+use bln::{protocol::BlnProtocol, tui::BlnTui};
 use color_eyre::Result;
 use stream::client::connect;
 use tracing_appender::{non_blocking, rolling};
@@ -48,6 +48,8 @@ async fn main() -> Result<()> {
         )
         .await?,
         BlnProtocol::default(),
+        BlnTui::default(),
+        tokio::time::Duration::from_millis(100),
     );
 
     app.run().await?;

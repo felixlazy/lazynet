@@ -16,3 +16,4 @@ protocol = { path = "../protocol/" }
 bytes = "1.11.0"
 futures = "0.3.31"
 bln = { path = "../bln/" }
+ui = { path = "../ui/" }
