@@ -12,12 +12,11 @@ use tokio::{
 };
 use tracing::{info, instrument, trace};
 
-use crate::traits::{AsyncFrameReader, AsyncFrameWriter};
+use crate::traits::{AsyncFrameReader, AsyncFrameWriter, AsyncStreamSplit};
 
-/// Lazyclient结构体用于管理TCP客户端连接的读写半部以及一个用于接收数据的缓冲区.
-/// `Lazyclient` 结构体用于管理TCP客户端连接的读写半部.
+/// `NetClient` 结构体用于管理TCP客户端连接的读写半部.
 /// 它持有TCP流的读取和写入部分,以便进行异步数据传输.
-pub struct Lazyclient {
+pub struct NetClient {
     /// TCP连接的读取半部,用于接收数据.
     read_half: OwnedReadHalf,
     /// TCP连接的写入半部,用于发送数据.
@@ -26,13 +25,13 @@ pub struct Lazyclient {
 
 #[async_trait]
 /// 为 `Lazyclient` 实现 `AsyncFrameWriter` trait, 提供异步写入帧数据的功能.
-impl AsyncFrameWriter for Lazyclient {
+impl AsyncFrameWriter for OwnedWriteHalf {
     /// 异步写入一帧数据到TCP连接.
     ///
     /// 参数 `buf` 是要写入的数据切片.
     /// 返回写入的字节数.
     async fn write_frame(&mut self, buf: &[u8]) -> Result<usize> {
-        let len = self.write_half.write(buf).await?;
+        let len = self.write(buf).await?;
         trace!("发送帧: {:X?}", buf);
         Ok(len)
     }
@@ -40,7 +39,7 @@ impl AsyncFrameWriter for Lazyclient {
 
 #[async_trait]
 /// 为 `Lazyclient` 实现 `AsyncFrameReader` trait, 提供异步读取帧数据的功能.
-impl AsyncFrameReader for Lazyclient {
+impl AsyncFrameReader for OwnedReadHalf {
     /// 异步读取一个数据帧到提供的缓冲区.
     ///
     /// 参数 `buf` 是一个实现了 `BufMut` trait 的可变缓冲区, 数据将被读取到其中.
@@ -50,10 +49,24 @@ impl AsyncFrameReader for Lazyclient {
         B: BufMut + ?Sized + Send,
     {
         // 使用 `read_buf` 直接从读取半部读取数据并填充到缓冲区中.
-        Ok(self.read_half.read_buf(buf).await?)
+        Ok(self.read_buf(buf).await?)
     }
 }
 
+/// 为 `Lazyclient` 实现 `AsyncStreamSplit` trait.
+impl AsyncStreamSplit for NetClient {
+    /// 定义读取器类型为 `OwnedReadHalf`.
+    type Reader = OwnedReadHalf;
+
+    /// 定义写入器类型为 `OwnedWriteHalf`.
+    type Writer = OwnedWriteHalf;
+
+    /// 实现 `into_split`, 消耗 `Lazyclient` 实例,
+    /// 并返回其内部持有的、拥有所有权的读取器和写入器半部.
+    fn into_split(self) -> (Self::Reader, Self::Writer) {
+        (self.read_half, self.write_half)
+    }
+}
 /// 建立一个到指定地址的TCP连接.
 ///
 /// 使用 `instrument` 宏进行tracing,并捕获连接过程中的错误.
@@ -73,7 +86,7 @@ impl AsyncFrameReader for Lazyclient {
 /// 5. 如果连接成功, 将TCP流拆分为独立的读写半部.
 /// 6. 返回一个新的 `Lazyclient` 实例, 包含读写半部.
 #[instrument(skip(addr))]
-pub async fn connect(addr: impl AsRef<str>, timeout: Duration) -> Result<Lazyclient> {
+pub async fn connect(addr: impl AsRef<str>, timeout: Duration) -> Result<NetClient> {
     // 创建一个新的IPv4 TCP socket
     let socket = TcpSocket::new_v4()?;
     // 禁用Nagle算法,减少延迟
@@ -93,7 +106,7 @@ pub async fn connect(addr: impl AsRef<str>, timeout: Duration) -> Result<Lazycli
     let (read_half, write_half) = client.into_split();
     info!("tcp连接到{}", addr.as_ref());
     // 返回一个新的Lazyclient实例
-    Ok(Lazyclient {
+    Ok(NetClient {
         read_half,
         write_half,
     })

@@ -1,7 +1,5 @@
-use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use color_eyre::Result;
-use stream::traits::AsyncFrameWriter;
 
 use crate::types::{Command, ProtocolError};
 
@@ -38,26 +36,24 @@ pub trait FrameGenerator {
     fn create_frame(&self, command: Command) -> Result<Bytes, ProtocolError>;
 }
 
-#[async_trait]
-/// `Protocol` 是一个组合 trait, 结合了 `ParseProtocol` 和 `FrameGenerator` 的功能,
-/// 并提供了处理周期性发送动作的能力. 它是应用层协议的核心接口.
-pub trait Protocol: ParseProtocol + FrameGenerator + Send {
-    /// 处理周期性发送动作的异步方法,例如发送心跳包或保持连接活跃的消息.
+/// `ProtocolSplit` trait 定义了一种将协议处理器分解为其编码和解码组件的标准方式.
+///
+/// 这个 trait 旨在替代一个单一、庞大的 `Protocol` trait, 遵循单一职责原则,
+/// 使得协议的读取和写入逻辑可以被独立地处理和传递.
+pub trait ProtocolSplit {
+    /// 关联类型, 代表协议的编码器部分.
+    /// 它应该实现 `FrameGenerator` trait.
+    type Encoder;
+
+    /// 关联类型, 代表协议的解码器/解析器部分.
+    /// 它应该实现 `ParseProtocol` trait.
+    type Decode;
+
+    /// 消耗协议对象本身, 并返回其分离的编码器和解码器组件.
     ///
-    /// 此方法提供一个默认实现, 不执行任何操作并返回 `Ok(0)`.
-    /// 具体的协议实现可以重写此方法, 以便在协议需要时发送周期性数据.
-    ///
-    /// # 参数
-    /// * `_send`: 一个实现了 `AsyncFrameWriter` trait 的可变引用, 用于向流中写入数据.
-    ///            在默认实现中未使用, 但在重写此方法的具体协议实现中可用于发送数据.
-    ///
-    /// # 返回
-    /// 一个 `Result<usize>`, 表示成功发送的字节数, 或者在发送过程中遇到的错误.
-    /// 默认实现总是返回 `Ok(0)`.
-    async fn handle_periodic_send_action<W>(&self, _send: &mut W) -> Result<usize>
-    where
-        W: AsyncFrameWriter + Send,
-    {
-        std::future::pending().await
-    }
+    /// 这种 "消耗并返回部分" 的模式在 Rust 的并发编程中非常有用,
+    /// 因为它允许我们将不同的组件 (如编码器和解码器) 的所有权
+    /// 移动到不同的异步任务中 (例如,一个专门用于写入,一个专门用于读取),
+    /// 这有助于满足 `tokio::spawn` 的 `'static` 生命周期要求.
+    fn into_split(self) -> (Self::Decode, Self::Encoder);
 }

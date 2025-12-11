@@ -41,15 +41,14 @@ async fn main() -> Result<()> {
         .init();
 
     // let mut protocol: Box<dyn Protocol> = Box::new(BlnProtocol::default());
-    let mut protocol = BlnProtocol::default();
-    let mut stream = connect(
-        "192.168.1.101:5006",
-        tokio::time::Duration::from_millis(5000),
-    )
-    .await?;
-    let mut app = LazyApp::new(&mut stream, &mut protocol, 1024);
-
-    app.start();
+    let app = LazyApp::new(
+        connect(
+            "192.168.1.101:5006",
+            tokio::time::Duration::from_millis(5000),
+        )
+        .await?,
+        BlnProtocol::default(),
+    );
 
     app.run().await?;
     Ok(())
