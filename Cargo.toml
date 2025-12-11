@@ -1,5 +1,5 @@
 [workspace]
-members = ["app", "stream", "protocol", "ui"]
+members = ["app", "stream", "protocol", "ui", "bln"]
 
 [workspace.dependencies]
 color-eyre = "0.6.5"

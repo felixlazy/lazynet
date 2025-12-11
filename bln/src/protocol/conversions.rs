@@ -1,7 +1,8 @@
-use super::types::{BlnProtocolType, BlnResponseStatus};
-use crate::types::{Command, ProtocolError};
 use bytes::{Buf, BufMut, BytesMut};
+use protocol::types::{Command, ProtocolError};
 use std::convert::TryFrom;
+
+use crate::protocol::types::{BlnProtocolType, BlnResponseStatus};
 
 // 将通用的 `Command` 解析为具体的 `BlnProtocolType`.
 impl TryFrom<Command> for BlnProtocolType {
@@ -108,9 +109,9 @@ impl TryFrom<BlnProtocolType> for Command {
 
 #[cfg(test)]
 mod tests {
-    use crate::bln::types::{BlnErrorCause, BlnProtocolType, BlnResponseStatus};
-    use crate::types::{Command, ProtocolError};
+    use crate::protocol::types::{BlnErrorCause, BlnProtocolType, BlnResponseStatus};
     use bytes::{BufMut, BytesMut};
+    use protocol::types::{Command, ProtocolError};
 
     // Helper to create a BytesMut from a slice
     fn b(s: &[u8]) -> BytesMut {

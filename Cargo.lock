@@ -36,6 +36,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "bln",
  "bytes",
  "color-eyre",
  "futures",
@@ -47,7 +48,6 @@ dependencies = [
  "tracing-appender",
  "tracing-error",
  "tracing-subscriber",
- "ui",
 ]
 
 [[package]]
@@ -81,6 +81,20 @@ name = "bitflags"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+
+[[package]]
+name = "bln"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "color-eyre",
+ "protocol",
+ "ratatui",
+ "tokio",
+ "tracing",
+ "ui",
+]
 
 [[package]]
 name = "bytes"
@@ -625,7 +639,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "color-eyre",
- "stream",
  "thiserror",
  "tokio",
  "tracing",

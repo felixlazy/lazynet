@@ -1,5 +1,5 @@
 [package]
-name = "protocol"
+name = "bln"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,6 +7,8 @@ edition = "2024"
 tokio.workspace = true
 color-eyre.workspace = true
 tracing.workspace = true
+ratatui.workspace = true
 bytes = "1.11.0"
-thiserror = "2.0.17"
 async-trait = "0.1.89"
+protocol = { path = "../protocol/" }
+ui = { path = "../ui/" }

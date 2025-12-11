@@ -1,13 +1,12 @@
 use std::convert::From;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use tracing::{debug, info, instrument};
-
-use crate::{
+use protocol::{
     traits::{FrameGenerator, ParseProtocol},
     types::{Command, ProtocolError},
     utils::calculate_bcc,
 };
+use tracing::{debug, info, instrument};
 
 /// BLN 协议定义的特定指令类型.
 ///

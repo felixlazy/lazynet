@@ -1,7 +1,8 @@
-use crate::{
-    bln::types::{BlnCommandDecode, BlnCommandEncoder},
-    traits::ProtocolSplit,
-};
+mod conversions;
+mod types;
+use protocol::traits::ProtocolSplit;
+
+use crate::protocol::types::{BlnCommandDecode, BlnCommandEncoder};
 
 #[derive(Default)]
 pub struct BlnProtocol {

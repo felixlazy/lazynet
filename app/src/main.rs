@@ -1,6 +1,6 @@
 use app::app::LazyApp;
+use bln::protocol::BlnProtocol;
 use color_eyre::Result;
-use protocol::bln::BlnProtocol;
 use stream::client::connect;
 use tracing_appender::{non_blocking, rolling};
 use tracing_error::ErrorLayer;

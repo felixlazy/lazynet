@@ -13,6 +13,6 @@ tracing-appender = "0.2.1"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 stream = { path = "../stream/" }
 protocol = { path = "../protocol/" }
-ui = { path = "../ui/" }
 bytes = "1.11.0"
 futures = "0.3.31"
+bln = { path = "../bln/" }
