@@ -1,5 +1,6 @@
 [workspace]
 members = ["app", "stream", "protocol", "ui", "bln"]
+default-run = "app"                                  # <--- 添加这一行
 
 [workspace.dependencies]
 color-eyre = "0.6.5"
