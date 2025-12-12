@@ -1,4 +1,4 @@
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use color_eyre::Result;
 
 use crate::types::{Command, ProtocolError};
@@ -22,6 +22,18 @@ pub trait ParseProtocol {
     /// 如果成功解析并提取到至少一个有效的帧,返回包含 `Command` 对象的 `Option<Vec<Command>>`;
     /// 否则返回 `None`,表示缓冲区中没有足够的完整且有效的帧数据可供解析.
     fn parse_protocol_frame(&mut self, buf: &mut BytesMut) -> Option<Vec<Command>>;
+
+    /// 在缓冲区中查找协议帧的头部同步字.
+    /// 如果找到, 会丢弃头部之前的所有数据, 并返回 `true`.
+    fn find_frame_head(&self, buf: &mut bytes::BytesMut, head: &[u8]) -> bool {
+        if let Some(index) = buf.windows(head.len()).position(|f| f == head) {
+            // 丢弃找到的帧头之前的所有无效数据
+            buf.advance(index);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// 一个通用的帧生成器 trait, 用于将高级别的协议命令转换成字节帧.

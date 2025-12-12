@@ -203,24 +203,18 @@ impl BlnCommandDecode {
     const RESERVED_LEN: usize = 4;
     /// 协议帧中的命令类型字段长度.
     const TYPE_LEN: usize = 1;
-
+    const DATA_LEN_FRAME_LEN: usize = 2;
+    const DATA_LEN_FRAME_START: usize = 7;
     // 长度字段 (u16) 的位掩码常量, 用于分离数据长度和标志位
     const DATA_LENGTH_MASK: u16 = 0x1FFF; // 低 13 位用于实际数据长度
     const FLAGS_MASK: u16 = 0xE000; // 高 3 位用于标志位，如响应状态
 
-    /// 在缓冲区中查找协议帧的头部同步字.
-    /// 如果找到, 会丢弃头部之前的所有数据, 并返回 `true`.
-    pub fn find_frame_head(&self, buf: &mut bytes::BytesMut) -> bool {
-        if let Some(index) = buf
-            .windows(Self::FRAME_HEAD_LEN)
-            .position(|f| f == Self::FRAME_HEAD)
-        {
-            // 丢弃找到的帧头之前的所有无效数据
-            buf.advance(index);
-            true
-        } else {
-            false
-        }
+    /// 从 2 字节的长度字段中解码出实际数据长度和高位标志 (如响应状态).
+    fn decode_length_flags(&self, len_field: u16) -> (usize, u8) {
+        (
+            (len_field & Self::DATA_LENGTH_MASK).into(),
+            ((len_field & Self::FLAGS_MASK) >> 13) as u8,
+        )
     }
 
     /// 检查缓冲区中是否包含一个完整的协议帧.
@@ -232,7 +226,15 @@ impl BlnCommandDecode {
         }
 
         // 从帧的特定位置读取长度字段
-        let len_bytes: [u8; 2] = buf[7..9].try_into().unwrap();
+        let len_bytes: [u8; Self::DATA_LEN_FRAME_LEN] = if let Ok(len) = buf
+            [Self::DATA_LEN_FRAME_START..(Self::DATA_LEN_FRAME_START + Self::DATA_LEN_FRAME_LEN)]
+            .try_into()
+        {
+            len
+        } else {
+            return None;
+        };
+
         let len_field = u16::from_be_bytes(len_bytes);
 
         // 解码出实际的数据负载长度
@@ -246,14 +248,6 @@ impl BlnCommandDecode {
         }
         Some(frame_len)
     }
-
-    /// 从 2 字节的长度字段中解码出实际数据长度和高位标志 (如响应状态).
-    fn decode_length_flags(&self, len_field: u16) -> (usize, u8) {
-        (
-            (len_field & Self::DATA_LENGTH_MASK).into(),
-            ((len_field & Self::FLAGS_MASK) >> 13) as u8,
-        )
-    }
 }
 
 impl ParseProtocol for BlnCommandDecode {
@@ -264,7 +258,7 @@ impl ParseProtocol for BlnCommandDecode {
         // 循环处理, 因为缓冲区中可能包含多个帧
         loop {
             // 首先找到帧头, 然后检查帧是否完整
-            if self.find_frame_head(buf)
+            if self.find_frame_head(buf, &Self::FRAME_HEAD)
                 && let Some(frame_len) = self.is_frame_complete(buf)
             {
                 // 校验 BCC
